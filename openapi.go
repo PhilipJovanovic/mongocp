@@ -159,6 +159,7 @@ const openAPISpec = `{
     }
   },
   "components": {
+    "schemas": {},
     "securitySchemes": {
       "bearerAuth": {"type": "http", "scheme": "bearer"}
     }
