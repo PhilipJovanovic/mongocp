@@ -21,6 +21,7 @@ type app struct {
 	db        *mongo.Database
 	token     string
 	publicURL string
+	reqLog    requestLog
 }
 
 func getenv(key, fallback string) string {
@@ -72,10 +73,11 @@ func main() {
 	mux.Handle("POST /documents/update", a.auth(a.handleUpdate))
 	mux.Handle("POST /documents/delete", a.auth(a.handleDelete))
 	mux.Handle("POST /documents/aggregate", a.auth(a.handleAggregate))
+	mux.Handle("GET /debug/requests", a.auth(a.handleDebugRequests))
 
 	srv := &http.Server{
 		Addr:              ":" + port,
-		Handler:           limitBody(mux),
+		Handler:           limitBody(a.logRequests(mux)),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,
 		WriteTimeout:      60 * time.Second,
