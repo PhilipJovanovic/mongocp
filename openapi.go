@@ -28,8 +28,8 @@ const openAPISpec = `{
   "openapi": "3.1.0",
   "info": {
     "title": "MongoCP",
-    "description": "A control plane for a MongoDB database. Lets you manage collections, read and write documents, and run aggregation pipelines for analytics. Document ids (_id) are returned as 24-character hex strings and can be passed back as plain strings in filters.",
-    "version": "1.0.0"
+    "description": "REST API for a MongoDB database: manage collections, read and write documents, and run aggregation pipelines for analytics. Documents are plain JSON objects with arbitrary fields - no BSON or extended JSON syntax needed. Write dates as ISO 8601 strings like \"2026-07-14T10:00:00Z\". Document ids (_id) are returned as 24-character hex strings and can be passed back as plain strings in filters, e.g. {\"_id\": \"665f1c...\"}.",
+    "version": "1.1.0"
   },
   "servers": [{"url": "{{SERVER_URL}}"}],
   "paths": {
@@ -37,21 +37,31 @@ const openAPISpec = `{
       "get": {
         "operationId": "listCollections",
         "summary": "List all collections in the database",
-        "responses": {"200": {"description": "Collection names", "content": {"application/json": {"schema": {"type": "object", "properties": {"collections": {"type": "array", "items": {"type": "string"}}}}}}}}
+        "responses": {
+          "200": {
+            "description": "Collection names",
+            "content": {"application/json": {"schema": {
+              "type": "object",
+              "properties": {"collections": {"type": "array", "items": {"type": "string"}}}
+            }}}
+          }
+        }
       },
       "post": {
         "operationId": "createCollection",
-        "summary": "Create a new collection",
+        "summary": "Create a new, empty collection",
         "requestBody": {
           "required": true,
-          "content": {"application/json": {"schema": {
-            "type": "object",
-            "required": ["name"],
-            "properties": {
-              "name": {"type": "string", "description": "Collection name (letters, digits, dots, dashes, underscores)"},
-              "validator": {"type": "object", "description": "Optional MongoDB JSON schema validator, e.g. {\"$jsonSchema\": {...}}"}
-            }
-          }}}
+          "content": {"application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["name"],
+              "properties": {
+                "name": {"type": "string", "description": "Collection name (letters, digits, dots, dashes, underscores)"}
+              }
+            },
+            "example": {"name": "todos"}
+          }}
         },
         "responses": {"201": {"description": "Created"}}
       }
@@ -60,101 +70,192 @@ const openAPISpec = `{
       "delete": {
         "operationId": "dropCollection",
         "summary": "Drop (permanently delete) a collection and all of its documents. Ask the user for confirmation before calling this.",
-        "parameters": [{"name": "name", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "parameters": [{"name": "name", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Collection name"}],
         "responses": {"200": {"description": "Dropped"}}
       }
     },
     "/collections/{name}/documents": {
       "post": {
         "operationId": "insertDocuments",
-        "summary": "Insert one or more documents into a collection",
-        "parameters": [{"name": "name", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "summary": "Insert one or more documents into a collection. Creates the collection automatically if it does not exist yet.",
+        "parameters": [{"name": "name", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Collection name, e.g. todos"}],
         "requestBody": {
           "required": true,
-          "content": {"application/json": {"schema": {
-            "type": "object",
-            "required": ["documents"],
-            "properties": {"documents": {"type": "array", "description": "Documents to insert", "items": {"type": "object"}}}
-          }}}
+          "content": {"application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["documents"],
+              "properties": {
+                "documents": {
+                  "type": "array",
+                  "description": "The documents to insert. Each document is a plain JSON object with any fields you like; nested objects and arrays are allowed. Do not include an _id field, it is generated automatically.",
+                  "items": {"type": "object", "additionalProperties": true}
+                }
+              }
+            },
+            "example": {
+              "documents": [
+                {"title": "Milch kaufen", "done": false, "tags": ["einkauf"], "createdAt": "2026-07-14T10:00:00Z"},
+                {"title": "Steuererklaerung machen", "done": false, "tags": [], "createdAt": "2026-07-14T10:00:00Z"}
+              ]
+            }
+          }}
         },
-        "responses": {"201": {"description": "Inserted ids", "content": {"application/json": {"schema": {"type": "object", "properties": {"insertedCount": {"type": "integer"}, "insertedIds": {"type": "array", "items": {"type": "string"}}}}}}}}
+        "responses": {
+          "201": {
+            "description": "Ids of the inserted documents",
+            "content": {"application/json": {"schema": {
+              "type": "object",
+              "properties": {
+                "insertedCount": {"type": "integer"},
+                "insertedIds": {"type": "array", "items": {"type": "string"}}
+              }
+            }}}
+          }
+        }
       }
     },
     "/collections/{name}/query": {
       "post": {
         "operationId": "queryDocuments",
-        "summary": "Find documents in a collection using a MongoDB filter",
-        "parameters": [{"name": "name", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "summary": "Find documents in a collection using a MongoDB filter. Send {\"filter\": {}} to list everything.",
+        "parameters": [{"name": "name", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Collection name"}],
         "requestBody": {
           "required": true,
-          "content": {"application/json": {"schema": {
-            "type": "object",
-            "properties": {
-              "filter": {"type": "object", "description": "MongoDB query filter, e.g. {\"status\": \"open\", \"age\": {\"$gt\": 30}}. Empty object matches everything."},
-              "projection": {"type": "object", "description": "Fields to include/exclude, e.g. {\"name\": 1}"},
-              "sort": {"type": "object", "description": "Sort spec, e.g. {\"createdAt\": -1}"},
-              "limit": {"type": "integer", "description": "Max documents to return (default 50, max 1000)"},
-              "skip": {"type": "integer", "description": "Documents to skip, for pagination"}
-            }
-          }}}
+          "content": {"application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "filter": {"type": "object", "additionalProperties": true, "description": "MongoDB query filter, e.g. {\"done\": false} or {\"amount\": {\"$gt\": 100}}. Empty object {} matches all documents."},
+                "projection": {"type": "object", "additionalProperties": true, "description": "Optional. Fields to include (1) or exclude (0), e.g. {\"title\": 1}"},
+                "sort": {"type": "object", "additionalProperties": true, "description": "Optional. Sort spec: 1 ascending, -1 descending, e.g. {\"createdAt\": -1}"},
+                "limit": {"type": "integer", "description": "Optional. Max documents to return (default 50, max 1000)"},
+                "skip": {"type": "integer", "description": "Optional. Documents to skip, for pagination"}
+              }
+            },
+            "example": {"filter": {"done": false}, "sort": {"createdAt": -1}, "limit": 20}
+          }}
         },
-        "responses": {"200": {"description": "Matching documents", "content": {"application/json": {"schema": {"type": "object", "properties": {"count": {"type": "integer"}, "documents": {"type": "array", "items": {"type": "object"}}}}}}}}
+        "responses": {
+          "200": {
+            "description": "Matching documents",
+            "content": {"application/json": {"schema": {
+              "type": "object",
+              "properties": {
+                "count": {"type": "integer"},
+                "documents": {"type": "array", "items": {"type": "object", "additionalProperties": true}}
+              }
+            }}}
+          }
+        }
       }
     },
     "/collections/{name}/update": {
       "post": {
         "operationId": "updateDocuments",
-        "summary": "Update documents matching a filter. Plain field maps are applied as $set; update operators like $inc are passed through.",
-        "parameters": [{"name": "name", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "summary": "Update documents matching a filter. A plain object of field values is applied as $set; MongoDB update operators like $inc or $push are passed through.",
+        "parameters": [{"name": "name", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Collection name"}],
         "requestBody": {
           "required": true,
-          "content": {"application/json": {"schema": {
-            "type": "object",
-            "required": ["filter", "update"],
-            "properties": {
-              "filter": {"type": "object", "description": "Which documents to update"},
-              "update": {"type": "object", "description": "New field values, or an update document with operators like {\"$inc\": {\"count\": 1}}"},
-              "many": {"type": "boolean", "description": "Update all matches instead of just the first (default false)"},
-              "upsert": {"type": "boolean", "description": "Insert the document if nothing matches (default false)"}
-            }
-          }}}
+          "content": {"application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["filter", "update"],
+              "properties": {
+                "filter": {"type": "object", "additionalProperties": true, "description": "Which documents to update, e.g. {\"_id\": \"665f1c...\"} or {\"done\": false}"},
+                "update": {"type": "object", "additionalProperties": true, "description": "New field values as a plain object, e.g. {\"done\": true}, or an update document with operators, e.g. {\"$push\": {\"tags\": \"neu\"}}"},
+                "many": {"type": "boolean", "description": "Update all matches instead of just the first (default false)"},
+                "upsert": {"type": "boolean", "description": "Insert the document if nothing matches (default false)"}
+              }
+            },
+            "example": {"filter": {"title": "Milch kaufen"}, "update": {"done": true}}
+          }}
         },
-        "responses": {"200": {"description": "Update result", "content": {"application/json": {"schema": {"type": "object", "properties": {"matchedCount": {"type": "integer"}, "modifiedCount": {"type": "integer"}, "upsertedCount": {"type": "integer"}}}}}}}
+        "responses": {
+          "200": {
+            "description": "Update result",
+            "content": {"application/json": {"schema": {
+              "type": "object",
+              "properties": {
+                "matchedCount": {"type": "integer"},
+                "modifiedCount": {"type": "integer"},
+                "upsertedCount": {"type": "integer"}
+              }
+            }}}
+          }
+        }
       }
     },
     "/collections/{name}/delete": {
       "post": {
         "operationId": "deleteDocuments",
         "summary": "Delete documents matching a filter. Ask the user for confirmation before deleting many documents.",
-        "parameters": [{"name": "name", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "parameters": [{"name": "name", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Collection name"}],
         "requestBody": {
           "required": true,
-          "content": {"application/json": {"schema": {
-            "type": "object",
-            "required": ["filter"],
-            "properties": {
-              "filter": {"type": "object", "description": "Which documents to delete"},
-              "many": {"type": "boolean", "description": "Delete all matches instead of just the first (default false)"}
-            }
-          }}}
+          "content": {"application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["filter"],
+              "properties": {
+                "filter": {"type": "object", "additionalProperties": true, "description": "Which documents to delete, e.g. {\"_id\": \"665f1c...\"}"},
+                "many": {"type": "boolean", "description": "Delete all matches instead of just the first (default false)"}
+              }
+            },
+            "example": {"filter": {"done": true}, "many": true}
+          }}
         },
-        "responses": {"200": {"description": "Delete result", "content": {"application/json": {"schema": {"type": "object", "properties": {"deletedCount": {"type": "integer"}}}}}}}
+        "responses": {
+          "200": {
+            "description": "Delete result",
+            "content": {"application/json": {"schema": {
+              "type": "object",
+              "properties": {"deletedCount": {"type": "integer"}}
+            }}}
+          }
+        }
       }
     },
     "/collections/{name}/aggregate": {
       "post": {
         "operationId": "aggregateDocuments",
-        "summary": "Run a MongoDB aggregation pipeline on a collection for analytics ($match, $group, $sort, $lookup, ...). $out and $merge are not allowed.",
-        "parameters": [{"name": "name", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "summary": "Run a MongoDB aggregation pipeline on a collection for analytics and reports ($match, $group, $sort, $lookup, ...). $out and $merge are not allowed.",
+        "parameters": [{"name": "name", "in": "path", "required": true, "schema": {"type": "string"}, "description": "Collection name"}],
         "requestBody": {
           "required": true,
-          "content": {"application/json": {"schema": {
-            "type": "object",
-            "required": ["pipeline"],
-            "properties": {"pipeline": {"type": "array", "description": "Aggregation stages, e.g. [{\"$group\": {\"_id\": \"$status\", \"total\": {\"$sum\": 1}}}]", "items": {"type": "object"}}}
-          }}}
+          "content": {"application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["pipeline"],
+              "properties": {
+                "pipeline": {
+                  "type": "array",
+                  "description": "Aggregation stages in order, each a plain JSON object",
+                  "items": {"type": "object", "additionalProperties": true}
+                }
+              }
+            },
+            "example": {
+              "pipeline": [
+                {"$match": {"done": false}},
+                {"$group": {"_id": "$category", "count": {"$sum": 1}}},
+                {"$sort": {"count": -1}}
+              ]
+            }
+          }}
         },
-        "responses": {"200": {"description": "Aggregation results", "content": {"application/json": {"schema": {"type": "object", "properties": {"count": {"type": "integer"}, "results": {"type": "array", "items": {"type": "object"}}}}}}}}
+        "responses": {
+          "200": {
+            "description": "Aggregation results",
+            "content": {"application/json": {"schema": {
+              "type": "object",
+              "properties": {
+                "count": {"type": "integer"},
+                "results": {"type": "array", "items": {"type": "object", "additionalProperties": true}}
+              }
+            }}}
+          }
+        }
       }
     }
   },

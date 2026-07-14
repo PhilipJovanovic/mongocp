@@ -60,22 +60,46 @@ func sanitize(v any) any {
 	}
 }
 
-// normalizeIDs walks a JSON value and converts 24-char hex strings under an
-// "_id" key (including inside operators like {"_id": {"$in": [...]}}) into
-// real ObjectIDs, so ChatGPT can reference documents by their hex id string.
-func normalizeIDs(v any, underID bool) any {
+// normalizeValues walks a JSON value from a request and converts it into what
+// the database expects. LLM clients express ids and dates in many shapes, so
+// all of these are accepted:
+//   - 24-char hex strings under an "_id" key (also inside operators like $in)
+//     become ObjectIDs
+//   - extended-JSON {"$oid": "..."} becomes an ObjectID
+//   - extended-JSON {"$date": "RFC 3339 string" | epoch-millis} becomes a
+//     time.Time
+func normalizeValues(v any, underID bool) any {
 	switch t := v.(type) {
 	case map[string]any:
+		if len(t) == 1 {
+			if raw, ok := t["$oid"]; ok {
+				if s, ok := raw.(string); ok {
+					if oid, err := bson.ObjectIDFromHex(s); err == nil {
+						return oid
+					}
+				}
+			}
+			if raw, ok := t["$date"]; ok {
+				switch d := raw.(type) {
+				case string:
+					if ts, err := time.Parse(time.RFC3339Nano, d); err == nil {
+						return ts.UTC()
+					}
+				case float64:
+					return time.UnixMilli(int64(d)).UTC()
+				}
+			}
+		}
 		out := make(map[string]any, len(t))
 		for k, val := range t {
 			childUnderID := k == "_id" || (underID && len(k) > 0 && k[0] == '$')
-			out[k] = normalizeIDs(val, childUnderID)
+			out[k] = normalizeValues(val, childUnderID)
 		}
 		return out
 	case []any:
 		out := make([]any, len(t))
 		for i, val := range t {
-			out[i] = normalizeIDs(val, underID)
+			out[i] = normalizeValues(val, underID)
 		}
 		return out
 	case string:

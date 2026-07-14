@@ -75,8 +75,8 @@ func (a *app) handleListCollections(w http.ResponseWriter, r *http.Request) {
 // POST /collections  {"name": "...", "validator": {...}}
 func (a *app) handleCreateCollection(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name      string         `json:"name"`
-		Validator map[string]any `json:"validator"`
+		Name      string     `json:"name"`
+		Validator flexObject `json:"validator"`
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -90,7 +90,7 @@ func (a *app) handleCreateCollection(w http.ResponseWriter, r *http.Request) {
 
 	opts := options.CreateCollection()
 	if req.Validator != nil {
-		opts.SetValidator(req.Validator)
+		opts.SetValidator(map[string]any(req.Validator))
 	}
 	if err := a.db.CreateCollection(ctx, req.Name, opts); err != nil {
 		writeError(w, http.StatusBadGateway, "create collection: "+err.Error())
@@ -123,7 +123,7 @@ func (a *app) handleInsert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Documents []map[string]any `json:"documents"`
+		Documents flexObjectArray `json:"documents"`
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -135,7 +135,7 @@ func (a *app) handleInsert(w http.ResponseWriter, r *http.Request) {
 
 	docs := make([]any, len(req.Documents))
 	for i, d := range req.Documents {
-		docs[i] = normalizeIDs(d, false)
+		docs[i] = normalizeValues(d, false)
 	}
 
 	ctx, cancel := reqContext(r)
@@ -159,17 +159,17 @@ func (a *app) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Filter     map[string]any `json:"filter"`
-		Projection map[string]any `json:"projection"`
-		Sort       map[string]any `json:"sort"`
-		Limit      int64          `json:"limit"`
-		Skip       int64          `json:"skip"`
+		Filter     flexObject `json:"filter"`
+		Projection flexObject `json:"projection"`
+		Sort       flexObject `json:"sort"`
+		Limit      int64      `json:"limit"`
+		Skip       int64      `json:"skip"`
 	}
 	if !readJSON(w, r, &req) {
 		return
 	}
 	if req.Filter == nil {
-		req.Filter = map[string]any{}
+		req.Filter = flexObject{}
 	}
 	if req.Limit <= 0 {
 		req.Limit = defaultLimit
@@ -189,7 +189,7 @@ func (a *app) handleQuery(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := reqContext(r)
 	defer cancel()
 
-	cur, err := a.db.Collection(name).Find(ctx, normalizeIDs(req.Filter, false), opts)
+	cur, err := a.db.Collection(name).Find(ctx, normalizeValues(map[string]any(req.Filter), false), opts)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "query: "+err.Error())
 		return
@@ -215,10 +215,10 @@ func (a *app) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Filter map[string]any `json:"filter"`
-		Update map[string]any `json:"update"`
-		Many   bool           `json:"many"`
-		Upsert bool           `json:"upsert"`
+		Filter flexObject `json:"filter"`
+		Update flexObject `json:"update"`
+		Many   bool       `json:"many"`
+		Upsert bool       `json:"upsert"`
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -233,13 +233,13 @@ func (a *app) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Wrap plain documents in $set so ChatGPT can send simple field updates.
-	update := any(normalizeIDs(req.Update, false))
+	update := normalizeValues(map[string]any(req.Update), false)
 	if !hasOperatorKeys(req.Update) {
 		update = bson.M{"$set": update}
 	}
-	filter := normalizeIDs(req.Filter, false)
-	if filter == nil {
-		filter = map[string]any{}
+	var filter any = map[string]any{}
+	if req.Filter != nil {
+		filter = normalizeValues(map[string]any(req.Filter), false)
 	}
 
 	ctx, cancel := reqContext(r)
@@ -281,8 +281,8 @@ func (a *app) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Filter map[string]any `json:"filter"`
-		Many   bool           `json:"many"`
+		Filter flexObject `json:"filter"`
+		Many   bool       `json:"many"`
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -291,9 +291,9 @@ func (a *app) handleDelete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "filter is required (set many=true to intentionally delete all documents)")
 		return
 	}
-	filter := normalizeIDs(req.Filter, false)
-	if filter == nil {
-		filter = map[string]any{}
+	var filter any = map[string]any{}
+	if req.Filter != nil {
+		filter = normalizeValues(map[string]any(req.Filter), false)
 	}
 
 	ctx, cancel := reqContext(r)
@@ -326,7 +326,7 @@ func (a *app) handleAggregate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Pipeline []map[string]any `json:"pipeline"`
+		Pipeline flexObjectArray `json:"pipeline"`
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -344,7 +344,7 @@ func (a *app) handleAggregate(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		pipeline[i] = normalizeIDs(stage, false)
+		pipeline[i] = normalizeValues(stage, false)
 	}
 
 	ctx, cancel := reqContext(r)
@@ -372,7 +372,7 @@ func (a *app) handleAggregate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func hasOperatorKeys(m map[string]any) bool {
+func hasOperatorKeys(m flexObject) bool {
 	for k := range m {
 		if strings.HasPrefix(k, "$") {
 			return true
