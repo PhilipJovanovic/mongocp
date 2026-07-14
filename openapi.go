@@ -32,8 +32,8 @@ const openAPISpec = `{
   "openapi": "3.1.0",
   "info": {
     "title": "MongoCP",
-    "description": "REST API for a MongoDB database: manage collections, read and write documents, and run aggregation pipelines for analytics. Every operation takes a single JSON request body; the target collection is always the \"collection\" field in that body. Documents are plain JSON objects with arbitrary fields - no BSON or extended JSON syntax needed. Write dates as ISO 8601 strings like \"2026-07-14T10:00:00Z\". Document ids (_id) are returned as 24-character hex strings and can be passed back as plain strings in filters, e.g. {\"_id\": \"665f1c...\"}.",
-    "version": "1.2.0"
+    "description": "REST API for a MongoDB database: manage collections, read and write documents, and run aggregation pipelines for analytics. Every operation takes a single JSON request body; the target collection is always the \"collection\" field in that body. Documents, filters, and pipelines are passed as JSON encoded into a string, e.g. \"documents\": \"[{\\\"title\\\": \\\"Milch kaufen\\\", \\\"done\\\": false}]\". Use plain JSON with arbitrary fields - no BSON syntax. Write dates as ISO 8601 strings like \"2026-07-14T10:00:00Z\". Document ids (_id) are returned as 24-character hex strings and can be used in filters as plain strings, e.g. {\"_id\": \"665f1c...\"}.",
+    "version": "1.3.0"
   },
   "servers": [{"url": "{{SERVER_URL}}"}],
   "paths": {
@@ -105,18 +105,14 @@ const openAPISpec = `{
               "properties": {
                 "collection": {"type": "string", "description": "Target collection, e.g. todos"},
                 "documents": {
-                  "type": "array",
-                  "description": "The documents to insert. Each document is a plain JSON object with any fields you like; nested objects and arrays are allowed. Do not include an _id field, it is generated automatically.",
-                  "items": {"type": "object", "additionalProperties": true}
+                  "type": "string",
+                  "description": "A JSON array of the documents to insert, encoded as a string. Each document is a plain JSON object with any fields you like; nested objects and arrays are allowed. Do not include an _id field, it is generated automatically. Example: \"[{\\\"title\\\": \\\"Milch kaufen\\\", \\\"done\\\": false}]\""
                 }
               }
             },
             "example": {
               "collection": "todos",
-              "documents": [
-                {"title": "Milch kaufen", "done": false, "list": "Privat", "createdAt": "2026-07-14T10:00:00Z"},
-                {"title": "Steuererklaerung machen", "done": false, "list": "Privat", "createdAt": "2026-07-14T10:00:00Z"}
-              ]
+              "documents": "[{\"title\": \"Milch kaufen\", \"done\": false, \"list\": \"Privat\"}, {\"title\": \"Urlaub buchen\", \"done\": false, \"list\": \"Privat\"}]"
             }
           }}
         },
@@ -146,14 +142,14 @@ const openAPISpec = `{
               "required": ["collection"],
               "properties": {
                 "collection": {"type": "string", "description": "Collection to search"},
-                "filter": {"type": "object", "additionalProperties": true, "description": "MongoDB query filter, e.g. {\"done\": false} or {\"amount\": {\"$gt\": 100}}. Empty object {} matches all documents."},
-                "projection": {"type": "object", "additionalProperties": true, "description": "Optional. Fields to include (1) or exclude (0), e.g. {\"title\": 1}"},
-                "sort": {"type": "object", "additionalProperties": true, "description": "Optional. Sort spec: 1 ascending, -1 descending, e.g. {\"createdAt\": -1}"},
+                "filter": {"type": "string", "description": "MongoDB query filter as a JSON object encoded into a string, e.g. \"{\\\"done\\\": false}\" or \"{\\\"amount\\\": {\\\"$gt\\\": 100}}\". Use \"{}\" to match all documents."},
+                "projection": {"type": "string", "description": "Optional. Fields to include (1) or exclude (0) as a JSON object string, e.g. \"{\\\"title\\\": 1}\""},
+                "sort": {"type": "string", "description": "Optional. Sort spec as a JSON object string: 1 ascending, -1 descending, e.g. \"{\\\"createdAt\\\": -1}\""},
                 "limit": {"type": "integer", "description": "Optional. Max documents to return (default 50, max 1000)"},
                 "skip": {"type": "integer", "description": "Optional. Documents to skip, for pagination"}
               }
             },
-            "example": {"collection": "todos", "filter": {"done": false}, "sort": {"createdAt": -1}, "limit": 20}
+            "example": {"collection": "todos", "filter": "{\"done\": false}", "sort": "{\"createdAt\": -1}", "limit": 20}
           }}
         },
         "responses": {
@@ -182,13 +178,13 @@ const openAPISpec = `{
               "required": ["collection", "filter", "update"],
               "properties": {
                 "collection": {"type": "string", "description": "Collection to update"},
-                "filter": {"type": "object", "additionalProperties": true, "description": "Which documents to update, e.g. {\"_id\": \"665f1c...\"} or {\"done\": false}"},
-                "update": {"type": "object", "additionalProperties": true, "description": "New field values as a plain object, e.g. {\"done\": true}, or an update document with operators, e.g. {\"$push\": {\"tags\": \"neu\"}}"},
+                "filter": {"type": "string", "description": "Which documents to update, as a JSON object string, e.g. \"{\\\"_id\\\": \\\"665f1c...\\\"}\" or \"{\\\"done\\\": false}\""},
+                "update": {"type": "string", "description": "New field values as a JSON object string, e.g. \"{\\\"done\\\": true}\", or an update document with operators, e.g. \"{\\\"$push\\\": {\\\"tags\\\": \\\"neu\\\"}}\""},
                 "many": {"type": "boolean", "description": "Update all matches instead of just the first (default false)"},
                 "upsert": {"type": "boolean", "description": "Insert the document if nothing matches (default false)"}
               }
             },
-            "example": {"collection": "todos", "filter": {"title": "Milch kaufen"}, "update": {"done": true}}
+            "example": {"collection": "todos", "filter": "{\"title\": \"Milch kaufen\"}", "update": "{\"done\": true}"}
           }}
         },
         "responses": {
@@ -218,11 +214,11 @@ const openAPISpec = `{
               "required": ["collection", "filter"],
               "properties": {
                 "collection": {"type": "string", "description": "Collection to delete from"},
-                "filter": {"type": "object", "additionalProperties": true, "description": "Which documents to delete, e.g. {\"_id\": \"665f1c...\"}"},
+                "filter": {"type": "string", "description": "Which documents to delete, as a JSON object string, e.g. \"{\\\"_id\\\": \\\"665f1c...\\\"}\""},
                 "many": {"type": "boolean", "description": "Delete all matches instead of just the first (default false)"}
               }
             },
-            "example": {"collection": "todos", "filter": {"done": true}, "many": true}
+            "example": {"collection": "todos", "filter": "{\"done\": true}", "many": true}
           }}
         },
         "responses": {
@@ -249,19 +245,14 @@ const openAPISpec = `{
               "properties": {
                 "collection": {"type": "string", "description": "Collection to aggregate over"},
                 "pipeline": {
-                  "type": "array",
-                  "description": "Aggregation stages in order, each a plain JSON object",
-                  "items": {"type": "object", "additionalProperties": true}
+                  "type": "string",
+                  "description": "The aggregation stages in order, as a JSON array encoded into a string, e.g. \"[{\\\"$group\\\": {\\\"_id\\\": \\\"$list\\\", \\\"count\\\": {\\\"$sum\\\": 1}}}]\""
                 }
               }
             },
             "example": {
               "collection": "todos",
-              "pipeline": [
-                {"$match": {"done": false}},
-                {"$group": {"_id": "$list", "count": {"$sum": 1}}},
-                {"$sort": {"count": -1}}
-              ]
+              "pipeline": "[{\"$match\": {\"done\": false}}, {\"$group\": {\"_id\": \"$list\", \"count\": {\"$sum\": 1}}}, {\"$sort\": {\"count\": -1}}]"
             }
           }}
         },

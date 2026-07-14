@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 )
 
 // GPT Actions frequently send JSON values in slightly wrong shapes: objects
@@ -20,14 +21,19 @@ func (f *flexObject) UnmarshalJSON(b []byte) error {
 	}
 	var s string
 	if err := json.Unmarshal(b, &s); err == nil {
+		s = strings.TrimSpace(s)
+		if s == "" || s == "null" {
+			*f = nil
+			return nil
+		}
 		var m2 map[string]any
 		if err := json.Unmarshal([]byte(s), &m2); err == nil {
 			*f = m2
 			return nil
 		}
-		return errors.New("string value is not a JSON object; send a real JSON object like {\"field\": \"value\"}")
+		return errors.New("string value is not a JSON object; send a JSON object like {\"field\": \"value\"}")
 	}
-	return errors.New("expected a JSON object like {\"field\": \"value\"}")
+	return errors.New("expected a JSON object like {\"field\": \"value\"}, either directly or encoded as a string")
 }
 
 // flexObjectArray unmarshals an array of objects, a single object, or a
@@ -47,6 +53,11 @@ func (f *flexObjectArray) UnmarshalJSON(b []byte) error {
 	}
 	var s string
 	if err := json.Unmarshal(b, &s); err == nil {
+		s = strings.TrimSpace(s)
+		if s == "" || s == "null" {
+			*f = nil
+			return nil
+		}
 		var arr2 []map[string]any
 		if err := json.Unmarshal([]byte(s), &arr2); err == nil {
 			*f = arr2
@@ -57,7 +68,7 @@ func (f *flexObjectArray) UnmarshalJSON(b []byte) error {
 			*f = []map[string]any{one2}
 			return nil
 		}
-		return errors.New("string value is not valid JSON; send a real JSON array of objects like [{\"field\": \"value\"}]")
+		return errors.New("string value is not valid JSON; send a JSON array of objects like [{\"field\": \"value\"}]")
 	}
-	return errors.New("expected a JSON array of objects like [{\"field\": \"value\"}]")
+	return errors.New("expected a JSON array of objects like [{\"field\": \"value\"}], either directly or encoded as a string")
 }
