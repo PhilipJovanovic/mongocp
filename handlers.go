@@ -41,6 +41,10 @@ func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 }
 
 func validCollection(w http.ResponseWriter, name string) bool {
+	if name == "" {
+		writeError(w, http.StatusBadRequest, "\"collection\" (string) is required in the request body")
+		return false
+	}
 	if !collectionNameRe.MatchString(name) || strings.HasPrefix(name, "system.") {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid collection name %q", name))
 		return false
@@ -72,16 +76,16 @@ func (a *app) handleListCollections(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"collections": names})
 }
 
-// POST /collections  {"name": "...", "validator": {...}}
+// POST /collections/create  {"collection": "...", "validator": {...}}
 func (a *app) handleCreateCollection(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name      string     `json:"name"`
-		Validator flexObject `json:"validator"`
+		Collection string     `json:"collection"`
+		Validator  flexObject `json:"validator"`
 	}
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if !validCollection(w, req.Name) {
+	if !validCollection(w, req.Collection) {
 		return
 	}
 
@@ -92,40 +96,46 @@ func (a *app) handleCreateCollection(w http.ResponseWriter, r *http.Request) {
 	if req.Validator != nil {
 		opts.SetValidator(map[string]any(req.Validator))
 	}
-	if err := a.db.CreateCollection(ctx, req.Name, opts); err != nil {
+	if err := a.db.CreateCollection(ctx, req.Collection, opts); err != nil {
 		writeError(w, http.StatusBadGateway, "create collection: "+err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"created": req.Name})
+	writeJSON(w, http.StatusCreated, map[string]any{"created": req.Collection})
 }
 
-// DELETE /collections/{name}
+// POST /collections/drop  {"collection": "..."}
 func (a *app) handleDropCollection(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if !validCollection(w, name) {
+	var req struct {
+		Collection string `json:"collection"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if !validCollection(w, req.Collection) {
 		return
 	}
 
 	ctx, cancel := reqContext(r)
 	defer cancel()
 
-	if err := a.db.Collection(name).Drop(ctx); err != nil {
+	if err := a.db.Collection(req.Collection).Drop(ctx); err != nil {
 		writeError(w, http.StatusBadGateway, "drop collection: "+err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"dropped": name})
+	writeJSON(w, http.StatusOK, map[string]any{"dropped": req.Collection})
 }
 
-// POST /collections/{name}/documents  {"documents": [{...}, ...]}
+// POST /documents/insert  {"collection": "...", "documents": [{...}, ...]}
 func (a *app) handleInsert(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if !validCollection(w, name) {
-		return
-	}
 	var req struct {
-		Documents flexObjectArray `json:"documents"`
+		Collection string          `json:"collection"`
+		Documents  flexObjectArray `json:"documents"`
 	}
 	if !readJSON(w, r, &req) {
+		return
+	}
+	name := req.Collection
+	if !validCollection(w, name) {
 		return
 	}
 	if len(req.Documents) == 0 {
@@ -152,13 +162,10 @@ func (a *app) handleInsert(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// POST /collections/{name}/query  {"filter": {...}, "projection": {...}, "sort": {...}, "limit": n, "skip": n}
+// POST /documents/query  {"collection": "...", "filter": {...}, "projection": {...}, "sort": {...}, "limit": n, "skip": n}
 func (a *app) handleQuery(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if !validCollection(w, name) {
-		return
-	}
 	var req struct {
+		Collection string     `json:"collection"`
 		Filter     flexObject `json:"filter"`
 		Projection flexObject `json:"projection"`
 		Sort       flexObject `json:"sort"`
@@ -166,6 +173,10 @@ func (a *app) handleQuery(w http.ResponseWriter, r *http.Request) {
 		Skip       int64      `json:"skip"`
 	}
 	if !readJSON(w, r, &req) {
+		return
+	}
+	name := req.Collection
+	if !validCollection(w, name) {
 		return
 	}
 	if req.Filter == nil {
@@ -208,19 +219,20 @@ func (a *app) handleQuery(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// POST /collections/{name}/update  {"filter": {...}, "update": {...}, "many": bool, "upsert": bool}
+// POST /documents/update  {"collection": "...", "filter": {...}, "update": {...}, "many": bool, "upsert": bool}
 func (a *app) handleUpdate(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if !validCollection(w, name) {
-		return
-	}
 	var req struct {
-		Filter flexObject `json:"filter"`
-		Update flexObject `json:"update"`
-		Many   bool       `json:"many"`
-		Upsert bool       `json:"upsert"`
+		Collection string     `json:"collection"`
+		Filter     flexObject `json:"filter"`
+		Update     flexObject `json:"update"`
+		Many       bool       `json:"many"`
+		Upsert     bool       `json:"upsert"`
 	}
 	if !readJSON(w, r, &req) {
+		return
+	}
+	name := req.Collection
+	if !validCollection(w, name) {
 		return
 	}
 	if len(req.Filter) == 0 && !req.Many {
@@ -274,17 +286,18 @@ func (a *app) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// POST /collections/{name}/delete  {"filter": {...}, "many": bool}
+// POST /documents/delete  {"collection": "...", "filter": {...}, "many": bool}
 func (a *app) handleDelete(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if !validCollection(w, name) {
-		return
-	}
 	var req struct {
-		Filter flexObject `json:"filter"`
-		Many   bool       `json:"many"`
+		Collection string     `json:"collection"`
+		Filter     flexObject `json:"filter"`
+		Many       bool       `json:"many"`
 	}
 	if !readJSON(w, r, &req) {
+		return
+	}
+	name := req.Collection
+	if !validCollection(w, name) {
 		return
 	}
 	if len(req.Filter) == 0 && !req.Many {
@@ -319,16 +332,17 @@ func (a *app) handleDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"deletedCount": deleted})
 }
 
-// POST /collections/{name}/aggregate  {"pipeline": [{...}, ...]}
+// POST /documents/aggregate  {"collection": "...", "pipeline": [{...}, ...]}
 func (a *app) handleAggregate(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if !validCollection(w, name) {
-		return
-	}
 	var req struct {
-		Pipeline flexObjectArray `json:"pipeline"`
+		Collection string          `json:"collection"`
+		Pipeline   flexObjectArray `json:"pipeline"`
 	}
 	if !readJSON(w, r, &req) {
+		return
+	}
+	name := req.Collection
+	if !validCollection(w, name) {
 		return
 	}
 	if len(req.Pipeline) == 0 {

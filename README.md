@@ -60,16 +60,18 @@ If MongoDB also runs on Coolify, prefer the internal network hostname in `MONGO_
 
 All endpoints except `/health` and `/openapi.json` require `Authorization: Bearer <API_TOKEN>`.
 
+Every operation is a flat POST with the target collection in the JSON body — no path parameters. (The GPT Actions importer tends to drop request bodies on operations that mix path parameters with a body.)
+
 | Method | Path | Body |
 | --- | --- | --- |
 | GET | `/collections` | – |
-| POST | `/collections` | `{"name": "...", "validator": {...}?}` |
-| DELETE | `/collections/{name}` | – |
-| POST | `/collections/{name}/documents` | `{"documents": [{...}]}` |
-| POST | `/collections/{name}/query` | `{"filter": {}, "projection": {}?, "sort": {}?, "limit": 50?, "skip": 0?}` |
-| POST | `/collections/{name}/update` | `{"filter": {}, "update": {}, "many": false?, "upsert": false?}` |
-| POST | `/collections/{name}/delete` | `{"filter": {}, "many": false?}` |
-| POST | `/collections/{name}/aggregate` | `{"pipeline": [{...}]}` |
+| POST | `/collections/create` | `{"collection": "...", "validator": {...}?}` |
+| POST | `/collections/drop` | `{"collection": "..."}` |
+| POST | `/documents/insert` | `{"collection": "...", "documents": [{...}]}` |
+| POST | `/documents/query` | `{"collection": "...", "filter": {}?, "projection": {}?, "sort": {}?, "limit": 50?, "skip": 0?}` |
+| POST | `/documents/update` | `{"collection": "...", "filter": {}, "update": {}, "many": false?, "upsert": false?}` |
+| POST | `/documents/delete` | `{"collection": "...", "filter": {}, "many": false?}` |
+| POST | `/documents/aggregate` | `{"collection": "...", "pipeline": [{...}]}` |
 
 Notes:
 

@@ -60,14 +60,18 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", a.handleHealth)
 	mux.HandleFunc("GET /openapi.json", a.handleOpenAPI)
+	// All mutating endpoints are flat POSTs with the collection in the JSON
+	// body: the GPT Actions importer reliably picks up body-only schemas but
+	// tends to drop request bodies on operations that mix path parameters
+	// with a body.
 	mux.Handle("GET /collections", a.auth(a.handleListCollections))
-	mux.Handle("POST /collections", a.auth(a.handleCreateCollection))
-	mux.Handle("DELETE /collections/{name}", a.auth(a.handleDropCollection))
-	mux.Handle("POST /collections/{name}/documents", a.auth(a.handleInsert))
-	mux.Handle("POST /collections/{name}/query", a.auth(a.handleQuery))
-	mux.Handle("POST /collections/{name}/update", a.auth(a.handleUpdate))
-	mux.Handle("POST /collections/{name}/delete", a.auth(a.handleDelete))
-	mux.Handle("POST /collections/{name}/aggregate", a.auth(a.handleAggregate))
+	mux.Handle("POST /collections/create", a.auth(a.handleCreateCollection))
+	mux.Handle("POST /collections/drop", a.auth(a.handleDropCollection))
+	mux.Handle("POST /documents/insert", a.auth(a.handleInsert))
+	mux.Handle("POST /documents/query", a.auth(a.handleQuery))
+	mux.Handle("POST /documents/update", a.auth(a.handleUpdate))
+	mux.Handle("POST /documents/delete", a.auth(a.handleDelete))
+	mux.Handle("POST /documents/aggregate", a.auth(a.handleAggregate))
 
 	srv := &http.Server{
 		Addr:              ":" + port,
