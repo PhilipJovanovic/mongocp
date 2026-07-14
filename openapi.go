@@ -77,7 +77,7 @@ const openAPISpec = `{
             "properties": {"documents": {"type": "array", "description": "Documents to insert", "items": {"type": "object"}}}
           }}}
         },
-        "responses": {"201": {"description": "Inserted ids", "content": {"application/json": {"schema": {"type": "object", "properties": {"insertedCount": {"type": "integer"}, "insertedIds": {"type": "array", "items": {"type": "string"}}}}}}}
+        "responses": {"201": {"description": "Inserted ids", "content": {"application/json": {"schema": {"type": "object", "properties": {"insertedCount": {"type": "integer"}, "insertedIds": {"type": "array", "items": {"type": "string"}}}}}}}}
       }
     },
     "/collections/{name}/query": {
@@ -98,7 +98,7 @@ const openAPISpec = `{
             }
           }}}
         },
-        "responses": {"200": {"description": "Matching documents", "content": {"application/json": {"schema": {"type": "object", "properties": {"count": {"type": "integer"}, "documents": {"type": "array", "items": {"type": "object"}}}}}}}
+        "responses": {"200": {"description": "Matching documents", "content": {"application/json": {"schema": {"type": "object", "properties": {"count": {"type": "integer"}, "documents": {"type": "array", "items": {"type": "object"}}}}}}}}
       }
     },
     "/collections/{name}/update": {
@@ -119,7 +119,7 @@ const openAPISpec = `{
             }
           }}}
         },
-        "responses": {"200": {"description": "Update result", "content": {"application/json": {"schema": {"type": "object", "properties": {"matchedCount": {"type": "integer"}, "modifiedCount": {"type": "integer"}, "upsertedCount": {"type": "integer"}}}}}}
+        "responses": {"200": {"description": "Update result", "content": {"application/json": {"schema": {"type": "object", "properties": {"matchedCount": {"type": "integer"}, "modifiedCount": {"type": "integer"}, "upsertedCount": {"type": "integer"}}}}}}}
       }
     },
     "/collections/{name}/delete": {
@@ -138,7 +138,7 @@ const openAPISpec = `{
             }
           }}}
         },
-        "responses": {"200": {"description": "Delete result", "content": {"application/json": {"schema": {"type": "object", "properties": {"deletedCount": {"type": "integer"}}}}}}
+        "responses": {"200": {"description": "Delete result", "content": {"application/json": {"schema": {"type": "object", "properties": {"deletedCount": {"type": "integer"}}}}}}}
       }
     },
     "/collections/{name}/aggregate": {
@@ -154,7 +154,7 @@ const openAPISpec = `{
             "properties": {"pipeline": {"type": "array", "description": "Aggregation stages, e.g. [{\"$group\": {\"_id\": \"$status\", \"total\": {\"$sum\": 1}}}]", "items": {"type": "object"}}}
           }}}
         },
-        "responses": {"200": {"description": "Aggregation results", "content": {"application/json": {"schema": {"type": "object", "properties": {"count": {"type": "integer"}, "results": {"type": "array", "items": {"type": "object"}}}}}}}
+        "responses": {"200": {"description": "Aggregation results", "content": {"application/json": {"schema": {"type": "object", "properties": {"count": {"type": "integer"}, "results": {"type": "array", "items": {"type": "object"}}}}}}}}
       }
     }
   },
